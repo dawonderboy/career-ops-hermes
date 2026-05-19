@@ -236,7 +236,7 @@ This is the way this fork is intended to be operated locally.
 Conceptual example:
 
 ```bash
-cd career-ops-public
+cd career-ops-public-clean
 hermes
 ```
 
@@ -245,23 +245,45 @@ Then ask Hermes for repo-aware actions:
 ```text
 Check whether Career-Ops is fully set up.
 Run the scan and tell me what changed.
+Debug the original dashboard on port 3737.
 Debug the React dashboard on port 3940.
 Prepare this repo for public release.
 ```
 
 Hermes should verify before reporting success. For example, if it starts a dashboard, it should check the port or API endpoint; if it creates tracker additions, it should run the merge and verification scripts.
 
-## React Dashboard
+## Dashboards
 
-This fork includes a React dashboard variant in addition to the original dashboard tooling.
+This fork has two web dashboards plus the original Go terminal dashboard. The two web dashboards read the same Career-Ops tracker data and expose similar `/api/*` endpoints, but their frontends are different.
 
-The React dashboard server is:
+### Original Node Web Dashboard
+
+The original web dashboard is:
+
+`web-dashboard.mjs`
+
+It is an all-in-one Node dashboard: server logic, HTML, CSS, and browser JavaScript live in the same `.mjs` file. It is useful when you want the mature/default dashboard path or when you want to change the original inline UI directly.
+
+To run it:
+
+```bash
+cd career-ops-public-clean
+node web-dashboard.mjs --host 0.0.0.0 --port 3737 --path .
+```
+
+Open:
+
+```text
+http://127.0.0.1:3737/
+```
+
+### React Web Dashboard
+
+The React dashboard variant is:
 
 `web-dashboard.react.mjs`
 
-The UI files are in:
-
-`mock/`
+It serves a React-style frontend from `mock/` while using the same Career-Ops data model and similar backend APIs.
 
 Important files:
 
@@ -281,7 +303,7 @@ mock/data.js
 To run it:
 
 ```bash
-cd career-ops-public
+cd career-ops-public-clean
 node web-dashboard.react.mjs --host 0.0.0.0 --port 3940 --path .
 ```
 
@@ -297,9 +319,17 @@ Depending on TLS configuration, you may also use:
 https://127.0.0.1:3940/
 ```
 
-The original Node dashboard commonly runs on port `3737`. The React dashboard commonly runs on port `3940`.
+### Which Dashboard Should You Use?
 
-## Terminal Dashboard
+| Dashboard | File | Common port | Best for |
+|---|---|---:|---|
+| Original Node web dashboard | `web-dashboard.mjs` | `3737` | Mature/default web UI, inline vanilla JS changes, quick tracker/pipeline viewing |
+| React web dashboard | `web-dashboard.react.mjs` + `mock/` | `3940` | Component-based UI experiments, cleaner layout work, reusable frontend sections |
+| Go terminal dashboard | `dashboard/` | n/a | Terminal-only browsing, filtering, sorting, and inline status changes |
+
+If you change shared API state, tracker parsing, scan/pipeline triggers, or endpoint behavior, check both web dashboards. If you only change UI layout, update the relevant frontend: inline code in `web-dashboard.mjs` for the original dashboard, or `mock/*.jsx` / `mock/Career Ops Dashboard.html` for the React dashboard.
+
+### Go Terminal Dashboard
 
 The original built-in terminal dashboard is still available:
 
@@ -371,7 +401,7 @@ agent instructions that do not expose private data
 ## Project Structure
 
 ```text
-career-ops-public/
+career-ops-public-clean/
 ├── AGENTS.md                    # Canonical agent instructions for this repo
 ├── CLAUDE.md                    # Claude Code context wrapper
 ├── GEMINI.md                    # Gemini CLI context wrapper, when used
@@ -446,7 +476,7 @@ Native Gemini CLI example:
 ```bash
 npm install -g @google/gemini-cli
 gemini auth
-cd career-ops-public
+cd career-ops-public-clean
 gemini
 ```
 

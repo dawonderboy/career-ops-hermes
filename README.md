@@ -56,7 +56,7 @@ This fork keeps the upstream architecture and much of the original documentation
 
 Public fork:
 
-`https://github.com/dawonderboy/career-ops-public-clean.git`
+`https://github.com/dawonderboy/career-ops-hermes.git`
 
 ## What Career-Ops Does
 
@@ -300,8 +300,8 @@ No private keys or OAuth files belong in this repo. Local credentials should liv
 
 ```bash
 # 1. Clone this public fork
-git clone https://github.com/dawonderboy/career-ops-public-clean.git
-cd career-ops-public-clean
+git clone https://github.com/dawonderboy/career-ops-hermes.git
+cd career-ops-hermes
 
 # 2. Install dependencies
 npm install
@@ -346,7 +346,7 @@ This is the way this fork is intended to be operated locally.
 Conceptual example:
 
 ```bash
-cd career-ops-public-clean
+cd career-ops-hermes
 hermes
 ```
 
@@ -377,7 +377,7 @@ It is an all-in-one Node dashboard: server logic, HTML, CSS, and browser JavaScr
 To run it:
 
 ```bash
-cd career-ops-public-clean
+cd career-ops-hermes
 node web-dashboard.mjs --host 0.0.0.0 --port 3737 --path .
 ```
 
@@ -413,7 +413,7 @@ mock/data.js
 To run it:
 
 ```bash
-cd career-ops-public-clean
+cd career-ops-hermes
 node web-dashboard.react.mjs --host 0.0.0.0 --port 3940 --path .
 ```
 
@@ -511,7 +511,7 @@ agent instructions that do not expose private data
 ## Project Structure
 
 ```text
-career-ops-public-clean/
+career-ops-hermes/
 ├── AGENTS.md                    # Canonical agent instructions for this repo
 ├── CLAUDE.md                    # Claude Code context wrapper
 ├── GEMINI.md                    # Gemini CLI context wrapper, when used
@@ -586,7 +586,7 @@ Native Gemini CLI example:
 ```bash
 npm install -g @google/gemini-cli
 gemini auth
-cd career-ops-public-clean
+cd career-ops-hermes
 gemini
 ```
 

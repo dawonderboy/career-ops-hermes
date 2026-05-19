@@ -107,6 +107,13 @@ Career-Ops provides:
 - `*.mjs` scripts — scanner, PDF generation, tracker merge, liveness checks, dashboard servers
 - `data/`, `reports/`, `output/`, `interview-prep/` — local working data, usually gitignored/private
 
+My Hermes layer adds:
+
+- the `career-ops-operations` skill — my operating manual for this repo
+- reference docs for scans, dashboards, email ingest, interview prep, apply packs, tracker repair, and public-release checks
+- a token-saving model split: Hermes coordinates, Claude handles bounded implementation/debugging, and ChatGPT/Codex is used for reasoning/review
+- verification habits that were not explicit in the original repo, such as checking tracker state, API state, dashboard state, and generated PDF outputs before calling work complete
+
 Hermes provides:
 
 - tool execution
@@ -124,6 +131,64 @@ The important distinction:
 
 - Career-Ops is the job-search application.
 - Hermes is the operator that knows how to run it, verify it, and coordinate other AI tools around it.
+
+## The `career-ops-operations` Hermes Skill
+
+One of the biggest additions around this fork is the `career-ops-operations` Hermes skill.
+
+That skill is not part of the original upstream Career-Ops repo. It is my Hermes runbook for operating Career-Ops safely over time. It teaches Hermes how to treat this repository as a living job-search system instead of just a folder of scripts.
+
+The skill covers:
+
+- first-session setup checks and update checks
+- scan workflow routing and scan result verification
+- pipeline and job evaluation rules
+- tracker write safety: new applications go through TSV additions plus `merge-tracker.mjs`, not direct table edits
+- dashboard troubleshooting for both web dashboards and the terminal dashboard
+- tracker/dashboard sync verification
+- email ingest and ntfy diagnostics
+- interview-prep workflows
+- apply-pack generation and PDF-only delivery expectations
+- public-sector evaluation patterns
+- JSearch, aggregator, and Ever Jobs scan tuning
+- Kanban pipeline handling
+- public repo preparation and sanitization reminders
+- model-split guidance for Hermes, Claude, and ChatGPT/Codex
+
+The important idea is that `career-ops-operations` is operational memory. It captures the procedures, pitfalls, and verification steps learned while running Career-Ops in the real world.
+
+Examples of things it adds on top of the original repo:
+
+| Added operational layer | What it does |
+|---|---|
+| Setup/onboarding guardrails | Checks for `cv.md`, `config/profile.yml`, `modes/_profile.md`, `portals.yml`, and tracker files before doing meaningful work |
+| Update checks | Uses `node update-system.mjs check` before the first Career-Ops operation in a session |
+| Tracker safety contract | Prevents direct new-row edits to `data/applications.md`; uses TSV additions and merge verification |
+| Dashboard operations | Distinguishes original Node web dashboard `3737`, React web dashboard `3940`, and Go terminal dashboard |
+| Email ingest diagnostics | Treats ntfy silence as inconclusive and checks logs/backlog/parser state instead |
+| Apply-pack verification | Requires final PDFs, reverse-chronological work history, and a stop before application submission |
+| Scan expansion | Documents ATS providers, aggregators, JSearch, Ever Jobs, rate limits, and dedup rules |
+| Interview prep pipeline | Routes recruiter calls, interview invites, confirmation reminders, and company research into structured prep workflows |
+| Public-release safety | Keeps private CVs, trackers, reports, generated PDFs, credentials, notification topics, and interview notes out of GitHub |
+
+In other words: upstream Career-Ops provides the engine; `career-ops-operations` is the operations manual that lets Hermes run the engine consistently.
+
+In my local Hermes setup, this skill lives outside the repo in the Hermes skills directory. The public repo documents the pattern without publishing private memory, credentials, or live job-search data.
+
+## Other Additions Around the Original Repo
+
+Beyond the upstream Career-Ops base, this fork/setup also documents or supports:
+
+- Hermes-first orchestration with persistent memory, tools, schedules, and skills
+- Claude Code delegation for implementation/debug tasks
+- ChatGPT/OpenAI Codex as a main reasoning or review layer
+- dual web dashboards: original Node and React variant
+- Google/Gemini CLI compatibility as another optional model interface
+- multi-source job discovery, including direct ATS APIs and job-board integrations
+- email-to-pipeline style workflows through local/private notification plumbing
+- interview-stage tracking and dashboard reflection
+- apply-pack and interview-prep workflows that prefer PDF final deliverables
+- public-safe cleanup so the repo can be shared without leaking the real job-search workspace
 
 ## How I Made Hermes Work With Career-Ops
 

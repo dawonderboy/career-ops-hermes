@@ -1,4 +1,4 @@
-# Career-Ops Public Clean
+# Career-Ops Hermes
 
 [English](README.md) | [Español](README.es.md) | [Português (Brasil)](README.pt-BR.md) | [한국어](README.ko-KR.md) | [日本語](README.ja.md) | [Русский](README.ru.md) | [简体中文](README.cn.md) | [繁體中文](README.zh-TW.md)
 
@@ -40,6 +40,21 @@ My work in this fork focuses on making that system run as a multi-agent operatin
 
 This README is intentionally different from the upstream README. The upstream README explains the product from the original author's perspective. This README explains the fork, the integration work, and how Hermes, Claude, and ChatGPT/Codex fit together.
 
+## Human-in-the-Loop and Ethical Use
+
+This project is a local-first job-search operations and decision-support system. It is not a mass-application bot, not a recruiter spam tool, and not a system for bypassing employer hiring processes.
+
+Core boundaries:
+
+- The system does not submit applications for the user.
+- AI-generated resumes, messages, screening answers, and prep notes require human review before use.
+- Scanning is for discovery and filtering, not for overwhelming job boards or employers.
+- Email ingest is for organizing user-owned job-search messages, not for unauthorized mailbox access or third-party data collection.
+- The public repo uses sanitized examples and should not contain real CVs, recruiter messages, tracker history, interview notes, credentials, or notification topics.
+- The goal is quality control: fewer, better applications where there is a genuine fit.
+
+The professional value of this repo is the systems work: workflow orchestration, local data hygiene, dashboarding, model routing, verification, and automation around a human decision-maker.
+
 ## Credit and Origin
 
 Career-Ops was created by Santiago Fernández de Valderrama.
@@ -60,16 +75,16 @@ Public fork:
 
 ## What Career-Ops Does
 
-Career-Ops turns job search work into a structured local pipeline:
+Career-Ops turns job search work into a structured local workflow:
 
 - Evaluates jobs against your CV, profile, target roles, preferences, and proof points
-- Generates tailored PDF resumes/CVs for roles worth applying to
-- Scans supported job boards and ATS portals
-- Tracks applications in markdown/TSV-backed local data files
+- Helps draft tailored PDF resumes/CVs for roles worth applying to
+- Scans supported public job boards and ATS portals for discovery/filtering
+- Tracks application state in local markdown/TSV-backed data files
 - Produces evaluation reports and interview-prep material
 - Keeps the human in control: the system can draft and prepare, but it should not submit applications for you
 
-Important: this is not intended to be a spray-and-pray application bot. The point is filtering and quality control: fewer, better applications.
+Important: this is not intended to be a spray-and-pray application tool. The point is filtering and quality control: fewer, better applications.
 
 ## My Part in the Codebase
 
@@ -185,7 +200,7 @@ Beyond the upstream Career-Ops base, this fork/setup also documents or supports:
 - dual web dashboards: original Node and React variant
 - Google/Gemini CLI compatibility as another optional model interface
 - multi-source job discovery, including direct ATS APIs and job-board integrations
-- email-to-pipeline style workflows through local/private notification plumbing
+- email-to-pipeline style workflows through local/private notification plumbing for user-owned job-search messages
 - interview-stage tracking and dashboard reflection
 - apply-pack and interview-prep workflows that prefer PDF final deliverables
 - public-safe cleanup so the repo can be shared without leaking the real job-search workspace
@@ -194,7 +209,7 @@ Beyond the upstream Career-Ops base, this fork/setup also documents or supports:
 
 The email ingest / ntfy workflow is also part of the added operations layer, not the original upstream baseline.
 
-The private version of this setup can receive job-search related email events, forward them into a local notification path, and let Hermes/Career-Ops reason about whether they should become pipeline items, tracker updates, interview-stage updates, or prep tasks.
+The private version of this setup can receive job-search related messages the user owns, forward them into a local notification path, and let Hermes/Career-Ops reason about whether they should become pipeline items, tracker updates, interview-stage updates, or prep tasks.
 
 For public documentation, the README keeps this intentionally sanitized:
 
@@ -219,8 +234,8 @@ I compared this fork against `santifer/career-ops` and found several categories 
 | Combined scan entrypoint | `scan-all.mjs`, `package.json` `npm run scan` | Runs provider/company scans and job-board aggregator scans in sequence | A single scan layer missed opportunities; the workflow needed both direct ATS APIs and broader job-board discovery | One command gives me a wider job search net without manually running several scripts |
 | Job-board aggregator scan | `scan-job-boards.mjs` | Adds JSearch/RapidAPI-style aggregator scanning with cooldowns, retries, dedup, title/location filtering, and pipeline writes | Direct ATS scanning is precise but limited to configured companies; aggregators broaden discovery | Finds more relevant roles across the market while still filtering before they hit my pipeline |
 | Provider expansion and hardening | `providers/workday.mjs`, changes to `providers/ashby.mjs`, `greenhouse.mjs`, `lever.mjs`, `_http.mjs` | Adds/updates provider handling, fetch behavior, retries, and supported ATS surfaces | Real job boards fail, rate-limit, or vary by ATS; scanner reliability needed hardening | Reduces false failures and expands the set of jobs Career-Ops can discover |
-| Scan notifications | `scan-with-notify.sh` | Runs scans and sends sanitized ntfy/Telegram-style notifications when new offers are found or failures happen | I did not want to constantly watch the terminal for new jobs | Lets the system alert me only when there is something worth checking |
-| Email ingest | `email-ingest.mjs`, `ingest-email.sh`, `career-ops-automation.sh` | Watches an ntfy topic, parses forwarded job-search emails, classifies events, and updates/reviews tracker state | Important job-search events arrive by email, not just job boards | Turns recruiter/application emails into actionable Career-Ops state instead of letting them get buried in my inbox |
+| Scan notifications | `scan-with-notify.sh` | Runs discovery checks and sends sanitized ntfy/Telegram-style notifications when new matching roles are found or failures happen | I did not want to constantly watch the terminal for new roles | Lets the system alert me only when there is something worth reviewing |
+| Email ingest | `email-ingest.mjs`, `ingest-email.sh`, `career-ops-automation.sh` | Organizes user-owned forwarded job-search messages, classifies events, and updates/reviews local tracker state | Important job-search events arrive by email, not just job boards | Turns recruiter/application emails into actionable Career-Ops state instead of letting them get buried in my inbox |
 | Automation controller | `career-ops-automation.sh` | Provides one shell controller for status, logs, restart-email, scan-now, replay-email, and verify | The email + scan automation needed a safer operational CLI than ad hoc process commands | Gives me a quick health panel and safe restart/replay commands for the automation stack |
 | Dashboard backend split | `web-dashboard-lib.mjs`, `tests/web-dashboard-lib.test.mjs` | Moves shared dashboard parsing/classification logic into a reusable module with tests | Two web dashboards need consistent tracker parsing and interview-stage behavior | Keeps the original and React dashboards aligned and makes bugs easier to test |
 | Original Node web dashboard | `web-dashboard.mjs` | Adds a browser dashboard for tracker, pipeline, interview, scan/pipeline actions, and live state | The terminal tracker alone was not enough for ongoing visual pipeline management | Gives me a fast local web UI for day-to-day Career-Ops status |
@@ -632,9 +647,9 @@ If you need a portfolio to support your job search, that project is a useful com
 
 ## Disclaimer
 
-Career-Ops is a local, open-source tool, not a hosted service.
+Career-Ops Hermes is a local, open-source workflow system, not a hosted service and not an application-submission service.
 
-You control your data. Your CV, job history, application records, generated PDFs, and provider credentials should stay on your machine unless you explicitly choose otherwise.
+You control your data. Your CV, job history, application records, generated PDFs, recruiter messages, interview notes, and provider credentials should stay on your machine unless you explicitly choose otherwise.
 
 You control the AI. The prompts and agent rules are designed to keep a human in the loop, but models can make mistakes. Always review generated content before using it.
 

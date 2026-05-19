@@ -124,7 +124,7 @@ Career-Ops provides:
 
 My Hermes layer adds:
 
-- the `career-ops-operations` skill — my operating manual for this repo
+- a full set of career-ops Hermes skills (see `.agents/skills/` and `.claude/skills/`) covering operations, interview prep, company research, job-board integrations, tracker archival, and dashboard stage filters
 - reference docs for scans, dashboards, email ingest, interview prep, apply packs, tracker repair, and public-release checks
 - a token-saving model split: Hermes coordinates, Claude handles bounded implementation/debugging, and ChatGPT/Codex is used for reasoning/review
 - verification habits that were not explicit in the original repo, such as checking tracker state, API state, dashboard state, and generated PDF outputs before calling work complete
@@ -147,7 +147,22 @@ The important distinction:
 - Career-Ops is the job-search application.
 - Hermes is the operator that knows how to run it, verify it, and coordinate other AI tools around it.
 
-## The `career-ops-operations` Hermes Skill
+## Hermes Skills Included in This Repo
+
+The following Hermes/agent skills are published under `.agents/skills/` and mirrored to `.claude/skills/`. They follow the [open agent skill standard](https://agentskills.io) and work with Hermes, Claude Code, Codex, and any compatible agent CLI that supports in-repo skill loading.
+
+| Skill | Category | What it covers |
+|---|---|---|
+| `career-ops-operations` | productivity | Main ops runbook: setup, scans, tracker/dashboard safety, email ingest, interview prep, apply packs, PDF delivery, public-release checks, model-split guidance. Includes 70+ reference docs. |
+| `interview-prep-and-research` | career-ops | Recruiter call analysis, hiring manager research, dark-theme PDF interview prep, structured prep output |
+| `company-research-interview-context` | career-ops | Pre-interview company research workflow: mission, product, team, funding, culture, your fit narrative |
+| `career-ops-interview-stage-filters` | career-ops | Dashboard calendar/stage display, overflow handling, stage extraction formats, popover actions |
+| `job-board-integrations` | productivity | Ever Jobs integration, ATS provider scan quirks, broad job-board discovery patterns |
+| `job-tracker-archival` | productivity | Archive expired or closed job postings; keep the active tracker clean |
+
+Personal identifiers, private interview details, and user-specific targeting references were excluded from all published skills. The content is operational patterns and reusable workflows, not private job-search data.
+
+## The `career-ops-operations` Skill
 
 One of the biggest additions around this fork is the `career-ops-operations` Hermes skill.
 
@@ -188,7 +203,7 @@ Examples of things it adds on top of the original repo:
 
 In other words: upstream Career-Ops provides the engine; `career-ops-operations` is the operations manual that lets Hermes run the engine consistently.
 
-In my local Hermes setup, this skill lives outside the repo in the Hermes skills directory. The public repo documents the pattern without publishing private memory, credentials, or live job-search data.
+As of this commit, the skill and its reference library are included in the repo under `.agents/skills/productivity/career-ops-operations/` and mirrored to `.claude/skills/productivity/career-ops-operations/`. Personal references, private interview details, and user-specific targeting files have been excluded; the published content covers the operational patterns, not the private job-search data.
 
 ## Other Additions Around the Original Repo
 
@@ -530,6 +545,19 @@ career-ops-hermes/
 ├── AGENTS.md                    # Canonical agent instructions for this repo
 ├── CLAUDE.md                    # Claude Code context wrapper
 ├── GEMINI.md                    # Gemini CLI context wrapper, when used
+├── .agents/
+│   └── skills/
+│       ├── career-ops/
+│       │   ├── career-ops-interview-stage-filters/   # Calendar/dashboard stage display
+│       │   ├── company-research-interview-context/   # Pre-interview company research
+│       │   └── interview-prep-and-research/          # Recruiter calls, HM research, PDFs
+│       └── productivity/
+│           ├── career-ops-operations/                # Main ops runbook + 70+ reference docs
+│           ├── job-board-integrations/               # Ever Jobs, provider quirks
+│           └── job-tracker-archival/                 # Archive expired/closed postings
+├── .claude/
+│   ├── commands/                # Claude Code slash commands for Career-Ops workflows
+│   └── skills/                  # Mirror of .agents/skills/ for Claude Code compatibility
 ├── docs/
 │   └── HERMES-MULTI-MODEL-SETUP.md
 ├── modes/                       # Career-Ops workflow modes

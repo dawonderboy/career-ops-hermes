@@ -165,7 +165,7 @@ Examples of things it adds on top of the original repo:
 | Update checks | Uses `node update-system.mjs check` before the first Career-Ops operation in a session |
 | Tracker safety contract | Prevents direct new-row edits to `data/applications.md`; uses TSV additions and merge verification |
 | Dashboard operations | Distinguishes original Node web dashboard `3737`, React web dashboard `3940`, and Go terminal dashboard |
-| Email ingest diagnostics | Treats ntfy silence as inconclusive and checks logs/backlog/parser state instead |
+| Email ingest + ntfy diagnostics | Documents the private email-to-pipeline workflow, treats ntfy silence as inconclusive, and checks logs/backlog/parser state instead |
 | Apply-pack verification | Requires final PDFs, reverse-chronological work history, and a stop before application submission |
 | Scan expansion | Documents ATS providers, aggregators, JSearch, Ever Jobs, rate limits, and dedup rules |
 | Interview prep pipeline | Routes recruiter calls, interview invites, confirmation reminders, and company research into structured prep workflows |
@@ -189,6 +189,21 @@ Beyond the upstream Career-Ops base, this fork/setup also documents or supports:
 - interview-stage tracking and dashboard reflection
 - apply-pack and interview-prep workflows that prefer PDF final deliverables
 - public-safe cleanup so the repo can be shared without leaking the real job-search workspace
+
+### Email Ingest and ntfy
+
+The email ingest / ntfy workflow is also part of the added operations layer, not the original upstream baseline.
+
+The private version of this setup can receive job-search related email events, forward them into a local notification path, and let Hermes/Career-Ops reason about whether they should become pipeline items, tracker updates, interview-stage updates, or prep tasks.
+
+For public documentation, the README keeps this intentionally sanitized:
+
+- it describes the workflow pattern without publishing the real forwarding address, ntfy topic, tokens, or mailbox details
+- it treats ntfy as transport/notification plumbing, not as proof that the ingest system is healthy
+- it documents that Hermes should check process state, logs, parser behavior, backlog behavior, and dashboard/tracker reflection when diagnosing email ingest
+- it keeps all real email content, interview details, recruiter messages, notification topics, and credentials out of GitHub
+
+So the public repo explains that email ingest + ntfy exists as an add-on layer, while the private operational details stay in local Hermes skills, environment variables, logs, and gitignored runtime data.
 
 ## How I Made Hermes Work With Career-Ops
 

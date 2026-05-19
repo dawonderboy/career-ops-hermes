@@ -1,0 +1,21 @@
+candidate:
+  full_name: "Jane Smith"
+  email: "jane@example.com"
+  phone: "+1-555-0100"
+  location: "Austin, TX"
+  linkedin: "linkedin.com/in/janesmith"
+
+target_roles:
+  primary:
+    - "Senior Platform Engineer"
+    - "IT Support Engineer"
+  archetypes:
+    - name: "Platform Engineer"
+      level: "Senior"
+      fit: "primary"
+    - name: "Workplace / IT Engineer"
+      level: "Senior"
+      fit: "secondary"
+
+calendar:
+  enabled: false

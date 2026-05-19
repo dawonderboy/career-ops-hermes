@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Career Ops Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --sans: "Inter", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100vh; }
+  body {
+    font-family: var(--sans);
+    background: #1e1e2e;
+    color: #cdd6f4;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #45475a; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #585b70; }
+  @keyframes slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  select { cursor: pointer; }
+  button:focus, select:focus, input:focus { outline: 1px solid #b4befe66; outline-offset: 1px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@13/marked.min.js"></script>
+
+<!-- Static fallback data; the live adapter overwrites window.APPS if /api/state responds. -->
+<script src="data.js"></script>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="ui-shell.jsx"></script>
+<script type="text/babel" src="scan-queue.jsx"></script>
+<script type="text/babel" src="pipeline-view.jsx"></script>
+<script type="text/babel" src="kanban-view.jsx"></script>
+<script type="text/babel" src="calendar-view.jsx"></script>
+<script type="text/babel" src="progress-view.jsx"></script>
+<script type="text/babel" src="drawer.jsx"></script>
+
+<!--
+  Live data adapter.
+  - On boot, GET /api/state. If it parses, overwrite window.APPS / metrics
+    and emit a "career-ops:live-update" event so the App re-reads.
+  - If /api/state 404s (we're loaded as a static file off disk), keep the
+    data.js mock data — the page still works.
+  - When live, open an EventSource to /api/stream and refetch on update.
+-->
+<script>
+(function liveAdapter() {
+  const live = {
+    enabled: false,
+    error: null,
+    lastUpdate: null,
+    metrics: null,
+    loading: true,
+  };
+  window.__live = live;
+
+  function emit() {
+    window.dispatchEvent(new CustomEvent("career-ops:live-update"));
+  }
+
+  function applyState(s) {
+    if (!s || !Array.isArray(s.apps)) return false;
+    // Map server shape onto what the React mock reads. The server already
+    // includes both `num` and `n`, so the existing components keep working.
+    window.APPS = s.apps.map(a => ({
+      ...a,
+      n: a.n ?? a.num,
+      note: a.note ?? a.notes ?? "",
+      // Mock fields not in the server payload — leave as `—` so columns render.
+      remote: a.remote ?? "—",
+      comp:   a.comp   ?? "—",
+      archetype: a.archetype ?? (a.role || "").split(" ").slice(-2).join(" "),
+      tldr:   a.tldr   ?? a.readiness ?? "",
+    }));
+
+    // Recompute derived window globals from live apps (Task 1).
+    (function recomputeGlobals() {
+      const apps = window.APPS;
+      const total = apps.length;
+
+      window.FUNNEL = ["Evaluated", "Applied", "Responded", "Interview", "Rejected", "Offer"].map(label => {
+        const count = apps.filter(a => (a.status || "").toLowerCase() === label.toLowerCase()).length;
+        return { label, count, pct: total > 0 ? (count / total) * 100 : 0 };
+      });
+
+      const scoredApps = apps.filter(a => a.score != null);
+      const bucketDefs = [
+        { label: "4.5–5.0", test: function(s) { return s >= 4.5; } },
+        { label: "4.0–4.4", test: function(s) { return s >= 4.0 && s < 4.5; } },
+        { label: "3.5–3.9", test: function(s) { return s >= 3.5 && s < 4.0; } },
+        { label: "3.0–3.4", test: function(s) { return s >= 3.0 && s < 3.5; } },
+        { label: "<3.0",         test: function(s) { return s < 3.0; } },
+      ];
+      window.SCORE_BUCKETS = bucketDefs.map(function(b) {
+        return { label: b.label, count: scoredApps.filter(function(a) { return b.test(a.score); }).length };
+      });
+
+      var archetypeMap = {};
+      for (var i = 0; i < apps.length; i++) {
+        var k = apps[i].archetype || "Unknown";
+        archetypeMap[k] = (archetypeMap[k] || 0) + 1;
+      }
+      window.ARCHETYPES = Object.entries(archetypeMap)
+        .map(function(e) { return { label: e[0], count: e[1] }; })
+        .sort(function(a, b) { return b.count - a.count; })
+        .slice(0, 8);
+
+      // WEEKLY: no live backend metric; keeping static fallback from data.js
+    })();
+
+    live.metrics = s.metrics || null;
+    live.lastUpdate = new Date();
+    live.calendarSource = s.calendarSource || null;
+    live.calendarError = s.calendarError || null;
+    live.calendarEvents = Array.isArray(s.calendarEvents) ? s.calendarEvents : [];
+    live.interviewEvents = live.calendarEvents;
+    // Wire interview prep files
+    window.PREP = s.prep || [];
+    // Wire detailed Kanban pipeline (data/kanban-pipeline.json)
+    window.KANBAN = s.kanban && Array.isArray(s.kanban.records)
+      ? s.kanban
+      : { stages: [], records: [], metrics: {} };
+    // Wire scan queue from live inboxItems
+    const srcDomain = url => { try { return new URL(url).hostname.replace(/^www\./, "").split(".")[0]; } catch { return ""; } };
+    window.SCAN_QUEUE = (s.inboxItems || []).map((e, i) => ({
+      id: `q-${i}`,
+      added: new Date().toISOString().slice(0, 16).replace("T", " "),
+      source: e.source || srcDomain(e.url) || "unknown",
+      company: (e.company && e.company !== "Unknown") ? e.company : null,
+      state: "queued",
+      score: null,
+      error: null,
+      url: e.url,
+    }));
+    return true;
+  }
+
+  async function fetchState() {
+    try {
+      const r = await fetch("/api/state", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const s = await r.json();
+      if (applyState(s)) {
+        live.enabled = true;
+        live.error = null;
+        live.loading = false;
+        emit();
+        return true;
+      }
+    } catch (err) {
+      live.error = err.message || String(err);
+    }
+    return false;
+  }
+
+  async function boot() {
+    const ok = await fetchState();
+    if (!ok) {
+      // Static fallback — data.js already populated window.APPS.
+      live.enabled = false;
+      live.loading = false;
+      window.KANBAN = window.KANBAN || { stages: [], records: [], metrics: {} };
+      emit();
+      return;
+    }
+    // Open SSE for change notifications.
+    try {
+      const es = new EventSource("/api/stream");
+      es.addEventListener("update",   () => fetchState());
+      es.addEventListener("pipeline", () => emit());
+      es.onerror = () => { /* keep going; browser auto-reconnects */ };
+    } catch {}
+  }
+
+  // Trigger after data.js + jsx scripts have loaded; document.readyState is
+  // 'complete' by the time inline scripts at end-of-body run.
+  if (document.readyState === "complete") boot();
+  else window.addEventListener("load", boot, { once: true });
+
+  // Helpers exposed for the React app.
+  window.__live.refresh = fetchState;
+  window.__live.runPipeline = async function () {
+    const r = await fetch("/api/pipeline", { method: "POST" });
+    return r.json().catch(() => ({}));
+  };
+  window.__live.runScan = async function () {
+    const r = await fetch("/api/scan", { method: "POST" });
+    return r.json().catch(() => ({}));
+  };
+  window.__live.pipelineStatus = async function () {
+    const r = await fetch("/api/pipeline-status");
+    return r.json().catch(() => ({}));
+  };
+  window.__live.updateApp = async function (num, status, notes) {
+    const r = await fetch("/api/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ num, status, notes }),
+    });
+    return r.ok;
+  };
+  window.__live.removeFromQueue = async function (targetUrl) {
+    const r = await fetch("/api/queue/remove", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: targetUrl }),
+    });
+    if (r.ok) await fetchState();
+    return r.ok;
+  };
+})();
+</script>
+
+<script type="text/babel" data-presets="env,react">
+const { useState, useMemo, useEffect } = React;
+
+function useCareerOpsIsMobile(bp = 640) {
+  const [m, setM] = React.useState(() => window.innerWidth < bp);
+  React.useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${bp - 1}px)`);
+    const sync = (e) => setM(e.matches);
+    setM(mq.matches);
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", sync);
+      return () => mq.removeEventListener("change", sync);
+    }
+    mq.addListener(sync);
+    return () => mq.removeListener(sync);
+  }, [bp]);
+  return m;
+}
+
+function useCareerOpsTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === "object" && keyOrEdits !== null
+      ? keyOrEdits
+      : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: "__edit_mode_set_keys", edits }, "*");
+  }, []);
+  return [values, setTweak];
+}
+
+// Lightweight runtime tweak defaults.
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "mocha",
+  "density": "compact",
+  "view": "pipeline",
+  "accentRole": "lavender",
+  "sort": "date",
+  "statusFilters": ["all"],
+  "showScanQueue": true,
+  "showPipelineCard": true
+}/*EDITMODE-END*/;
+
+// ── PipelineStatusCard ─────────────────────────────────────────────
+// Live-only. Hidden when window.__live.enabled is false (static fallback).
+function PipelineStatusCard({ t, visible }) {
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const isMobile = useCareerOpsIsMobile();
+
+  const refresh = () => {
+    if (!window.__live?.pipelineStatus) return;
+    window.__live.pipelineStatus().then(setStatus).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!visible) return;
+    refresh();
+    const onLive = () => refresh();
+    window.addEventListener("career-ops:live-update", onLive);
+    const tick = setInterval(refresh, 5000);
+    return () => {
+      window.removeEventListener("career-ops:live-update", onLive);
+      clearInterval(tick);
+    };
+  }, [visible]);
+
+  if (!visible) return null;
+  if (!window.__live?.enabled) return null;
+
+  const running = status?.running;
+  const lastExit = status?.exitCode;
+  const dotColor = running ? t.yellow : (lastExit === 0 ? t.green : (lastExit == null ? t.muted : t.red));
+  const lastRun = (status?.finishedAt || status?.startedAt)
+    ? new Date(status.finishedAt || status.startedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    : "not recorded";
+
+  const onRun = async () => {
+    if (busy || running) return;
+    setBusy(true);
+    await window.__live.runPipeline().catch(() => {});
+    setBusy(false);
+    refresh();
+  };
+
+  if (isMobile) {
+    return (
+      <div style={{
+        background: t.mantle, border: `1px solid ${t.surface}`, borderRadius: 10,
+        padding: "10px 14px",
+        display: "flex", alignItems: "center", gap: 10,
+      }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, flexShrink: 0,
+          animation: running ? "pulse 1.4s ease-out infinite" : "none" }} />
+        <div style={{ color: t.subtext, fontFamily: "var(--mono)", fontSize: 11, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {running ? "pipeline running…" : lastExit === 0 ? "pipeline idle · ok" : "pipeline idle"}
+        </div>
+        <button onClick={onRun} disabled={running || busy} style={{
+          background: running ? t.surface : `${t.lavender}1a`, color: running ? t.muted : t.lavender,
+          border: `1px solid ${running ? t.surface : t.lavender + "66"}`,
+          borderRadius: 6, padding: "5px 10px",
+          fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600,
+          cursor: running ? "not-allowed" : "pointer", flexShrink: 0,
+        }}>
+          {running ? "running" : "▶ run"}
+        </button>
+        <style>{`@keyframes pulse { 0%{box-shadow:0 0 0 0 currentColor;} 70%{box-shadow:0 0 0 6px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }`}</style>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      background: t.mantle, border: `1px solid ${t.surface}`, borderRadius: 10,
+      padding: "14px 16px",
+      display: "flex", alignItems: "center", gap: 14,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+        <span style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: dotColor,
+          boxShadow: running ? `0 0 0 0 ${dotColor}66` : "none",
+          animation: running ? "pulse 1.4s ease-out infinite" : "none",
+        }} />
+        <div style={{ color: t.subtext, fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: 600 }}>
+          Pipeline
+        </div>
+      </div>
+      <div style={{ color: t.text, fontFamily: "var(--mono)", fontSize: 12 }}>
+        {running ? "running…" : lastExit === 0 ? "idle · last run ok" : lastExit == null ? "idle" : `idle · last exit ${lastExit}`}
+      </div>
+      <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11 }}>
+        last: {lastRun}
+      </div>
+      {status?.lastError && !running && (
+        <div style={{ color: t.red, fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 320 }}>
+          ⚠ {status.lastError}
+        </div>
+      )}
+      <div style={{ flex: 1 }} />
+      <button onClick={onRun} disabled={running || busy} style={{
+        background: running ? t.surface : `${t.lavender}1a`,
+        color: running ? t.muted : t.lavender,
+        border: `1px solid ${running ? t.surface : t.lavender + "66"}`,
+        borderRadius: 6, padding: "6px 14px",
+        fontFamily: "var(--mono)", fontSize: 11, fontWeight: 600,
+        cursor: running ? "not-allowed" : "pointer",
+        display: "inline-flex", alignItems: "center", gap: 6,
+      }}>
+        {running ? "● running" : "▶ run pipeline"}
+      </button>
+      <style>{`@keyframes pulse { 0%{box-shadow:0 0 0 0 currentColor;} 70%{box-shadow:0 0 0 6px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }`}</style>
+    </div>
+  );
+}
+
+// ── LiveBadge replaces the "synced 2m ago" text in TopBar ─────────
+function LiveBadge({ t, lastUpdate, enabled }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick(n => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const ago = lastUpdate
+    ? Math.max(0, Math.floor((Date.now() - lastUpdate.getTime()) / 1000))
+    : null;
+  const source = window.__live?.calendarSource || null;
+  const sourceLabel = source === 'google-calendar'
+    ? 'google calendar'
+    : source === 'tracker-fallback'
+      ? 'tracker fallback'
+      : null;
+  const label =
+    !enabled ? "static · data.js" :
+    ago == null ? `live${sourceLabel ? ` · ${sourceLabel}` : ''}` :
+    ago < 60 ? `live${sourceLabel ? ` · ${sourceLabel}` : ''} · synced ${ago}s ago` :
+    `live${sourceLabel ? ` · ${sourceLabel}` : ''} · synced ${Math.floor(ago / 60)}m ago`;
+  const color = enabled ? t.green : t.muted;
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                   color: t.subtext, fontFamily: "var(--mono)", fontSize: 12 }}>
+      <span style={{ color }}>●</span>{label}
+    </span>
+  );
+}
+
+// Replacement TopBar — responsive: desktop = single row, mobile = logo/view/badge + search row
+function TopBarLive({ t, view, setView, search, setSearch }) {
+  const [enabled, setEnabled] = useState(!!window.__live?.enabled);
+  const [lastUpdate, setLast] = useState(window.__live?.lastUpdate || null);
+  const isMobile = useCareerOpsIsMobile();
+  useEffect(() => {
+    const onLive = () => {
+      setEnabled(!!window.__live?.enabled);
+      setLast(window.__live?.lastUpdate || null);
+    };
+    window.addEventListener("career-ops:live-update", onLive);
+    return () => window.removeEventListener("career-ops:live-update", onLive);
+  }, []);
+
+  const logo = (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+      <div style={{
+        width: 22, height: 22, borderRadius: 5,
+        background: `linear-gradient(135deg, ${t.mauve}, ${t.blue})`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: t.crust, fontFamily: "var(--mono)", fontWeight: 700, fontSize: 12,
+      }}>◆</div>
+      <div style={{ fontFamily: "var(--mono)", fontSize: 13, color: t.text, letterSpacing: 0.5 }}>
+        career-ops
+      </div>
+    </div>
+  );
+
+  const viewPill = (
+    <div style={{
+      display: "inline-flex", background: t.base, border: `1px solid ${t.surface}`,
+      borderRadius: 7, padding: 3, flexShrink: 0,
+    }}>
+      {["pipeline", "kanban", "progress"].map(v => (
+        <button key={v} onClick={() => setView(v)} style={{
+          padding: isMobile ? "4px 10px" : "5px 14px",
+          background: view === v ? t.surface : "transparent",
+          border: "none", color: view === v ? t.text : t.subtext,
+          fontFamily: "var(--mono)", fontSize: 12, letterSpacing: 0.4,
+          cursor: "pointer", borderRadius: 5, textTransform: "lowercase",
+        }}>{v}</button>
+      ))}
+    </div>
+  );
+
+  const searchBox = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      background: t.base, border: `1px solid ${t.surface}`,
+      borderRadius: 7, padding: "6px 10px",
+      flex: isMobile ? 1 : undefined,
+      minWidth: isMobile ? 0 : 280,
+    }}>
+      <span style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 12 }}>⌕</span>
+      <input value={search} onChange={e => setSearch(e.target.value)}
+             placeholder={isMobile ? "search…" : "search company, role, archetype…"}
+             style={{ flex: 1, background: "transparent", border: "none", outline: "none",
+                      color: t.text, fontFamily: "var(--sans)", fontSize: 13 }} />
+    </div>
+  );
+
+  const liveBtn = (
+    <button onClick={() => window.__live?.refresh && window.__live.refresh()} style={{
+      background: t.base, border: `1px solid ${t.surface}`, color: t.subtext,
+      fontFamily: "var(--mono)", fontSize: 12,
+      padding: isMobile ? "6px 8px" : "6px 12px",
+      borderRadius: 7, cursor: "pointer",
+      display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
+    }}>
+      <LiveBadge t={t} lastUpdate={lastUpdate} enabled={enabled} />
+    </button>
+  );
+
+  if (isMobile) {
+    return (
+      <div style={{ borderBottom: `1px solid ${t.surface}`, background: t.mantle }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+          {logo}
+          <div style={{ flex: 1 }} />
+          {viewPill}
+          {liveBtn}
+        </div>
+        <div style={{ padding: "0 14px 10px" }}>
+          {searchBox}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center",
+      padding: "14px 22px",
+      borderBottom: `1px solid ${t.surface}`,
+      background: t.mantle, gap: 18,
+    }}>
+      {logo}
+      <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 12 }}>/</div>
+      <div style={{ color: t.subtext, fontFamily: "var(--mono)", fontSize: 12 }}>
+        {view === "pipeline" ? "pipeline" : view === "kanban" ? "kanban" : "progress"}
+      </div>
+      <div style={{ marginLeft: 8 }}>{viewPill}</div>
+      <div style={{ flex: 1 }} />
+      {searchBox}
+      {liveBtn}
+    </div>
+  );
+}
+
+// ── Pipeline view wrapper — adds tweaks (sort, status filter chips) ──
+const STATUS_OPTIONS = ["all", "Interview", "Applied", "Responded", "Evaluated", "Rejected", "Discarded", "SKIP"];
+
+function PipelineViewTweaked({ t, density, search, onOpen, sort: sortProp, statusFilters, setStatusFilters, showScanQueue }) {
+  const isMobile = useCareerOpsIsMobile();
+  const rawApps = window.APPS;
+  const isLoading = window.__live?.loading === true && !Array.isArray(rawApps);
+  const isError = !isLoading && !Array.isArray(rawApps) && !!window.__live?.error;
+  const apps = Array.isArray(rawApps) ? rawApps : [];
+  const [sortCol, setSortCol] = useState(sortProp || "date");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir(col === "company" || col === "role" || col === "status" ? "asc" : "desc"); }
+  };
+
+  const counts = useMemo(() => {
+    const c = { all: apps.length };
+    for (const s of STATUS_OPTIONS.slice(1)) c[s] = apps.filter(a => a.status === s).length;
+    return c;
+  }, [apps]);
+
+  const filtered = useMemo(() => {
+    const filters = statusFilters.includes("all") || statusFilters.length === 0
+      ? null : new Set(statusFilters);
+    let r = apps.slice();
+    if (filters) r = r.filter(a => filters.has(a.status));
+    if (search) {
+      const q = search.toLowerCase();
+      r = r.filter(a =>
+        (a.company || "").toLowerCase().includes(q) ||
+        (a.role || "").toLowerCase().includes(q) ||
+        (a.archetype || "").toLowerCase().includes(q)
+      );
+    }
+    const dir = sortDir === "asc" ? 1 : -1;
+    r.sort((a, b) => {
+      if (sortCol === "n")       return ((a.n || 0) - (b.n || 0)) * dir;
+      if (sortCol === "score")   return ((a.score || 0) - (b.score || 0)) * dir;
+      if (sortCol === "date")    return (a.date || "").localeCompare(b.date || "") * dir;
+      if (sortCol === "company") return (a.company || "").localeCompare(b.company || "") * dir;
+      if (sortCol === "role")    return (a.role || "").localeCompare(b.role || "") * dir;
+      if (sortCol === "status")  return (a.status || "").localeCompare(b.status || "") * dir;
+      if (sortCol === "comp")    return (a.comp || "").localeCompare(b.comp || "") * dir;
+      return 0;
+    });
+    return r;
+  }, [apps, statusFilters, search, sortCol, sortDir]);
+
+  const rowH = density === "compact" ? 38 : density === "cozy" ? 52 : 62;
+
+  const toggleFilter = (s) => {
+    if (s === "all") { setStatusFilters(["all"]); return; }
+    let next = statusFilters.filter(x => x !== "all");
+    if (next.includes(s)) next = next.filter(x => x !== s);
+    else next = [...next, s];
+    setStatusFilters(next.length === 0 ? ["all"] : next);
+  };
+
+  const isActive = (s) => statusFilters.includes(s) || (s === "all" && (statusFilters.length === 0 || statusFilters.includes("all")));
+
+  const ColHeader = ({ col, label }) => {
+    const active = sortCol === col;
+    const arrow = active ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+    return (
+      <div onClick={() => handleSort(col)} style={{
+        cursor: "pointer", userSelect: "none",
+        color: active ? t.lavender : t.muted,
+        display: "flex", alignItems: "center", gap: 2,
+        whiteSpace: "nowrap",
+      }}>
+        {label}{active && <span style={{ fontSize: 8, marginLeft: 2 }}>{sortDir === "asc" ? "▲" : "▼"}</span>}
+      </div>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div style={{ padding: "60px 22px", textAlign: "center" }}>
+        <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase" }}>loading…</div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div style={{ padding: "60px 22px", textAlign: "center" }}>
+        <div style={{ color: t.red, fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", marginBottom: 6 }}>data unavailable</div>
+        <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11 }}>{window.__live?.error}</div>
+      </div>
+    );
+  }
+
+  if (apps.length === 0) {
+    return (
+      <div style={{ padding: "60px 22px", textAlign: "center" }}>
+        <div style={{ color: t.subtext, fontFamily: "var(--mono)", fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", marginBottom: 6 }}>no applications yet</div>
+        <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11 }}>paste a job url or run a scan to add your first offer</div>
+      </div>
+    );
+  }
+
+  if (isMobile) {
+    return (
+      <div style={{ padding: "8px 14px 22px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* filter chips — horizontal scroll */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", paddingBottom: 2, flexWrap: "nowrap" }}>
+          {STATUS_OPTIONS.map(s => (
+            <window.Tab key={s} label={s.toLowerCase()} count={counts[s] || 0}
+                        active={isActive(s)} onClick={() => toggleFilter(s)} t={t} />
+          ))}
+        </div>
+        <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11 }}>
+          {filtered.length} of {apps.length}
+        </div>
+        {filtered.map(a => (
+          <div key={a.n} onClick={() => onOpen(a)} style={{
+            background: t.mantle, border: `1px solid ${t.surface}`, borderRadius: 10,
+            padding: "14px 16px", cursor: "pointer",
+            display: "flex", flexDirection: "column", gap: 8,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ color: t.text, fontWeight: 600, fontSize: 15, lineHeight: 1.3, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.company}</div>
+              <window.ScoreChip value={a.score} t={t} />
+            </div>
+            <div style={{ color: t.subtext, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.role}</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <window.StatusPill status={a.status} t={t} />
+              <span style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11 }}>{(a.date || "").slice(5)}</span>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 13, textAlign: "center", padding: 40 }}>no matches</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "8px 22px 22px", display: "flex", gap: 14, alignItems: "flex-start" }}>
+      {showScanQueue && window.ScanQueue && <window.ScanQueue t={t} onPromote={() => {}} />}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
+
+        {/* filter chips */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          {STATUS_OPTIONS.map(s => (
+            <window.Tab key={s} label={s.toLowerCase()} count={counts[s] || 0}
+                        active={isActive(s)} onClick={() => toggleFilter(s)} t={t} />
+          ))}
+          <div style={{ flex: 1 }} />
+          <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 11 }}>
+            {filtered.length} of {apps.length}
+          </div>
+        </div>
+
+        {/* table */}
+        <div style={{ background: t.mantle, border: `1px solid ${t.surface}`, borderRadius: 10, overflow: "hidden" }}>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "60px 110px 1.4fr 2fr 90px 130px 1.4fr 130px 30px",
+            alignItems: "center", gap: 12,
+            padding: "10px 18px",
+            background: t.crust, borderBottom: `1px solid ${t.surface}`,
+            fontFamily: "var(--mono)", fontSize: 10.5,
+            letterSpacing: 0.6, textTransform: "uppercase",
+          }}>
+            <ColHeader col="n" label="#" />
+            <ColHeader col="date" label="date" />
+            <ColHeader col="company" label="company" />
+            <ColHeader col="role" label="role" />
+            <ColHeader col="score" label="score" />
+            <ColHeader col="status" label="status" />
+            <div style={{ color: t.muted }}>tldr</div>
+            <ColHeader col="comp" label="comp" />
+            <div></div>
+          </div>
+          <div style={{ maxHeight: density === "compact" ? 480 : 520, overflowY: "auto" }}>
+            {filtered.map((a, i) => (
+              <div key={a.n} onClick={() => onOpen(a)} style={{
+                display: "grid",
+                gridTemplateColumns: "60px 110px 1.4fr 2fr 90px 130px 1.4fr 130px 30px",
+                alignItems: "center", gap: 12,
+                height: rowH, padding: "0 18px",
+                borderBottom: `1px solid ${t.surface}`,
+                background: i % 2 === 0 ? "transparent" : `${t.surface}33`,
+                cursor: "pointer", transition: "background 120ms",
+              }} onMouseEnter={e => e.currentTarget.style.background = `${t.lavender}10`}
+                 onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? "transparent" : `${t.surface}33`}>
+                <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 12, fontFeatureSettings: '"tnum"' }}>#{a.n}</div>
+                <div style={{ color: t.subtext, fontFamily: "var(--mono)", fontSize: 12, fontFeatureSettings: '"tnum"' }}>{(a.date || "").slice(5)}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: t.text, fontWeight: 600, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.company}</div>
+                  {density !== "compact" && <div style={{ color: t.muted, fontSize: 11, fontFamily: "var(--mono)" }}>{a.archetype}</div>}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: t.subtext, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.role}</div>
+                  {density === "comfortable" && <div style={{ color: t.muted, fontSize: 11, marginTop: 2 }}>{a.remote}</div>}
+                </div>
+                <div><window.ScoreChip value={a.score} t={t} /></div>
+                <div><window.StatusPill status={a.status} t={t} /></div>
+                <div style={{ color: t.subtext, fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.tldr}</div>
+                <div style={{ color: t.subtext, fontFamily: "var(--mono)", fontSize: 11.5, fontFeatureSettings: '"tnum"', overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{a.comp}</div>
+                <div style={{ color: t.muted, fontFamily: "var(--mono)", fontSize: 14 }}>›</div>
+              </div>
+            ))}
+            {filtered.length === 0 && (
+              <div style={{ padding: 40, color: t.muted, fontFamily: "var(--mono)", fontSize: 13, textAlign: "center" }}>no matches</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function lsGet(key, fallback) { try { const v = localStorage.getItem(key); return v != null ? JSON.parse(v) : fallback; } catch { return fallback; } }
+function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+
+function App() {
+  const [tweaks, setTweak] = useCareerOpsTweaks(TWEAK_DEFAULTS);
+
+  const VALID_VIEWS = ["pipeline", "kanban", "progress"];
+  const normalizeView = (v) => (VALID_VIEWS.includes(v) ? v : "pipeline");
+  const [view, setViewRaw] = useState(() => {
+    const hash = location.hash.slice(1);
+    if (VALID_VIEWS.includes(hash)) return normalizeView(hash);
+    return normalizeView(lsGet("co-view", tweaks.view));
+  });
+  const [statusFilters, setStatusFiltersRaw] = useState(() => lsGet("co-filters", tweaks.statusFilters || ["all"]));
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [, forceTick] = useState(0);
+
+  // Re-render when live data updates.
+  useEffect(() => {
+    const onLive = () => forceTick(n => n + 1);
+    window.addEventListener("career-ops:live-update", onLive);
+    return () => window.removeEventListener("career-ops:live-update", onLive);
+  }, []);
+
+  // Sync view if user navigates with browser back/forward.
+  useEffect(() => {
+    const onHash = () => {
+      const hash = location.hash.slice(1);
+      if (VALID_VIEWS.includes(hash)) setViewRaw(normalizeView(hash));
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  const t = window.THEMES[tweaks.theme] || window.THEMES.mocha;
+
+  const onSetView = (v) => { const next = normalizeView(v); setViewRaw(next); location.hash = next; lsSet("co-view", next); setTweak("view", next); };
+
+  const setStatusFilters = (next) => { setStatusFiltersRaw(next); lsSet("co-filters", next); setTweak("statusFilters", next); };
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: t.base, color: t.text,
+      display: "flex", flexDirection: "column",
+    }} data-screen-label={`Career Ops · ${view}`}>
+      <TopBarLive t={t} view={view} setView={onSetView}
+                  search={search} setSearch={setSearch} />
+
+      <window.Stats t={t} apps={Array.isArray(window.APPS) ? window.APPS : []} />
+
+      {tweaks.showPipelineCard && (
+        <div style={{ padding: "0 22px 8px" }}>
+          <PipelineStatusCard t={t} visible={tweaks.showPipelineCard} />
+        </div>
+      )}
+
+      {view === "pipeline" ? (
+        <PipelineViewTweaked t={t} density={tweaks.density} search={search}
+          onOpen={(a) => setSelected(a)} sort={tweaks.sort}
+          statusFilters={statusFilters} setStatusFilters={setStatusFilters}
+          showScanQueue={tweaks.showScanQueue} />
+      ) : view === "kanban" ? (
+        window.KanbanView
+          ? <window.KanbanView t={t} search={search} onOpen={(a) => setSelected(a)} />
+          : <div style={{ padding: 40, color: t.muted, fontFamily: "var(--mono)", fontSize: 13, textAlign: "center" }}>Kanban view not loaded.</div>
+      ) : (
+        <window.ProgressView t={t} density={tweaks.density}
+                             onOpen={(a) => setSelected(a)} />
+      )}
+
+      <window.Drawer app={selected} t={t} onClose={() => setSelected(null)} />
+
+      {window.TweaksPanel && (
+        <window.TweaksPanel title="Tweaks">
+          <window.TweakSection label="Theme">
+            <window.TweakRadio label="Palette" value={tweaks.theme}
+              options={[{value: "mocha", label: "Mocha"}, {value: "latte", label: "Latte"}]}
+              onChange={v => setTweak("theme", v)} />
+          </window.TweakSection>
+
+          <window.TweakSection label="Layout">
+            <window.TweakRadio label="Density" value={tweaks.density}
+              options={[
+                {value: "compact", label: "Compact"},
+                {value: "cozy", label: "Cozy"},
+                {value: "comfortable", label: "Roomy"},
+              ]}
+              onChange={v => setTweak("density", v)} />
+            <window.TweakRadio label="View" value={view}
+              options={[
+                {value: "pipeline", label: "Pipeline"},
+                {value: "kanban",   label: "Kanban"},
+                {value: "progress", label: "Progress"},
+              ]}
+              onChange={v => onSetView(v)} />
+          </window.TweakSection>
+
+          <window.TweakSection label="Pipeline table">
+            <window.TweakSelect label="Sort by" value={tweaks.sort}
+              options={[
+                {value: "date",     label: "Date (newest)"},
+                {value: "score",    label: "Score (high→low)"},
+                {value: "priority", label: "Priority"},
+                {value: "company",  label: "Company A→Z"},
+              ]}
+              onChange={v => setTweak("sort", v)} />
+          </window.TweakSection>
+
+          <window.TweakSection label="Status filter">
+            {STATUS_OPTIONS.map(s => (
+              <window.TweakToggle key={s} label={s === "all" ? "Show all" : s}
+                value={statusFilters.includes(s)}
+                onChange={(on) => {
+                  if (s === "all") { setStatusFilters(on ? ["all"] : []); return; }
+                  let next = statusFilters.filter(x => x !== "all");
+                  if (on && !next.includes(s)) next.push(s);
+                  if (!on) next = next.filter(x => x !== s);
+                  setStatusFilters(next.length === 0 ? ["all"] : next);
+                }} />
+            ))}
+          </window.TweakSection>
+
+          <window.TweakSection label="Cards">
+            <window.TweakToggle label="Show Scan Queue" value={!!tweaks.showScanQueue}
+              onChange={v => setTweak("showScanQueue", v)} />
+            <window.TweakToggle label="Show Pipeline Status" value={!!tweaks.showPipelineCard}
+              onChange={v => setTweak("showPipelineCard", v)} />
+          </window.TweakSection>
+        </window.TweaksPanel>
+      )}
+    </div>
+  );
+}
+
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  componentDidCatch(error) { this.setState({ error }); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ background: "#1e1e2e", color: "#cdd6f4", fontFamily: "monospace", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: 60, gap: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>Something went wrong loading the dashboard.</div>
+          <div style={{ color: "#a6adc8" }}>Refresh the page to try again.</div>
+          {this.state.error.message && (
+            <code style={{ color: "#6c7086", fontSize: 12, background: "#181825", padding: "8px 14px", borderRadius: 6, maxWidth: 600, wordBreak: "break-word" }}>{this.state.error.message}</code>
+          )}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App /></ErrorBoundary>);
+</script>
+</body>
+</html>
